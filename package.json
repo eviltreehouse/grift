@@ -1,0 +1,15 @@
+{
+  "name": "grift",
+  "version": "0.1.0",
+  "description": "Promises w/ rollback :)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Corey Sharrah <corey@eviltreehouse.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "mocha": "^5.1.1",
+    "simple-assert": "^1.0.0"
+  }
+}
