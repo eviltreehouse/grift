@@ -3,13 +3,20 @@
 class Grift {
 	/**
 	 * Create a new `Grift` container.
+	 * @param {Object.<string, any>} [in_context]
 	 */
-	constructor() {
+	constructor(in_context) {
+		if (! in_context) in_context = {};
+
 		/** @type {Function[]} */
 		this.steps = [];
+
+		/** @type {Function[]} */
 		this.rb_steps = [];
 
 		this.txn_context = {};
+		this.last_result = null;
+
 		this.txn_start_time = 0;
 		this.txn_run_time = null;
 
@@ -21,12 +28,39 @@ class Grift {
 		
 		this.result = null;
 		this.resolver = null;
+
+		// mix in in_context and prefix keys with '$' to distinguish them
+		// from step output.
+		for (var k in in_context) {
+			var ck = `$${k}`;
+			this.txn_context[ck] = in_context[k];
+		}
+	}
+
+	/**
+	 * Erases container
+	 * @return {Grift}
+	 */
+	reset() {
+		this.steps = [];
+		this.rb_steps = [];
+
+		this.txn_context = {};
+		this.yays = [];
+		this.nays = [];
+
+		this.result = this.resolver = null;
+		this.abort_triggered = false;
+		this.executing = false;
+
+		return this;
 	}
 
 	/**
 	 * Adds a step to the transaction stack, tagged with `tag`. 
 	 * The `pfunc` Function when called (with the context object as its 
-	 * sole argument) MUST return a `Promise`.
+	 * sole argument) _should_ return a Promise -- any other value will be
+	 * treated as a resolved Promise.
 	 * The optional `rfunc` Function is the code that should trigger,
 	 * in the event the step needs to be "rolled back". If returns a
 	 * `Promise`, it will wait for it to complete until moving on to
@@ -102,97 +136,13 @@ class Grift {
 		return true;
 	}
 
-	/*
-	_nextStep() {
-		if (this.steps.length == 0) {
-			this._complete();
-			return;
-		}
-
-		if (this.abort_triggered || (this.nays.length > 0)) {
-			// stop everything!
-			this._rollback();
-			return;
-		}
-
-		var prm = this.steps.shift();
-		var tag = prm[0];
-		var pfunc = prm[1];
-		var rfunc = prm[2];
-
-		var p = pfunc(this.txn_context);
-
-		if (! (p instanceof Promise)) {
-			// something went wrong here..
-			this._markStepFailed(tag, "Initializer did not return a Promise");
-			setTimeout(() => { this._nextStep(); }, 1);
-		} else {
-			// handle our promise result information
-			p.then((res) => {
-				this._markStepSuccess(tag, res);
-				this.rb_steps.push(rfunc);
-				setTimeout(() => { this._nextStep(); }, 1);
-			}, (err) => {
-				this._markStepFailed(tag, err);
-				setTimeout(() => { this._nextStep(); }, 1);
-			});
-		}
-	}
-
-	_rollback() {
-		if (this.rb_steps.length == 0) {
-			this._complete();
-		} else {
-			this.rb_steps.reverse();
-
-			var rb = Promise.resolve(true);
-
-			for (var rbfunc of this.rb_steps) {
-				rb = rb.then(
-					(function(rbf, ctx) {
-						return function() { rbfunc(ctx); };
-					})(rbfunc, this.txn_context)
-				);
-			}
-
-			rb.then(() => {
-				this._complete();
-			});
-		}
-	}
-
-	_complete() {
-		this.executing = false;
-		
-		this.txn_run_time = Date.now() - this.txn_start_time;
-
-		if (this.nays.length > 0) {
-			this.result = false;
-		} else {
-			this.result = true;
-		}
-
-		this.resolver(this);
-	}
-
-	_markStepFailed(tag, msg) {
-		this.nays.push([
-			tag, msg
-		]);
-	}
-
-	_markStepSuccess(tag, res) {
-		this.txn_context[tag] = res;
-		this.yays.push(tag);
-	}
-	*/
-
 	/**
 	 * Returns any results from the step marked `tag`
 	 * @param {string} tag
 	 * @return {any}
 	 */
 	resultsFrom(tag) {
+		if (tag.match(/^\$/)) return null;
 		return this.txn_context[tag];
 	}
 
@@ -201,7 +151,14 @@ class Grift {
 	 * @return {Object.<string, any>}
 	 */
 	resultsAll() {
-		return this.txn_context;
+		var ret = {};
+
+		for (var k in this.txn_context) {
+			if (k.match(/^\$/)) continue;
+			ret[k] = this.txn_context[k];
+		}
+
+		return ret;
 	}
 
 	/**
@@ -308,7 +265,7 @@ function _nextStep() {
 	var pfunc = prm[1];
 	var rfunc = prm[2];
 
-	var p = pfunc(this.txn_context);
+	var p = pfunc(this.last_result, this.txn_context);
 
 	if (! (p instanceof Promise)) {
 		// something went wrong here..
@@ -338,7 +295,7 @@ function _rollback() {
 		for (var rbfunc of this.rb_steps) {
 			rb = rb.then(
 				(function(rbf, ctx) {
-					return function() { rbfunc(ctx); };
+					return function() { return rbf(ctx); };
 				})(rbfunc, this.txn_context)
 			);
 		}
@@ -354,12 +311,7 @@ function _complete() {
 	
 	this.txn_run_time = Date.now() - this.txn_start_time;
 
-	if (this.nays.length > 0) {
-		this.result = false;
-	} else {
-		this.result = true;
-	}
-
+	this.result = this.nays.length == 0;
 	this.resolver(this);
 }
 
@@ -371,6 +323,7 @@ function _markStepFailed(tag, msg) {
 
 function _markStepSuccess(tag, res) {
 	this.txn_context[tag] = res;
+	this.last_result = res;
 	this.yays.push(tag);
 }
 

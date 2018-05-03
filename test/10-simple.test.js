@@ -2,14 +2,20 @@
 const assert = require('simple-assert');
 const Grift = require('../grift');
 
+const AccountNumberGetter = function() {
+	return '4111111111111212';
+};
+
 describe("Simple Usage Tests", () => {
 	context("Single step: sync", () => {
-		var g = new Grift();
+		var g = new Grift({
+			'acct': AccountNumberGetter
+		});
 		var gp;
 
-		it("Accepts add()", () => {
-			var result = g.add('simple-sync', (ctx) => {
-				return Promise.resolve(2018);
+		it("Accepts add() - use provided context in step", () => {
+			var result = g.add('simple-sync', (last, ctx) => {
+				return Promise.resolve('2018-' + ctx.$acct());
 			});
 
 			assert(result instanceof Grift);
@@ -27,12 +33,12 @@ describe("Simple Usage Tests", () => {
 				try {
 					assert(g.success(), 'did not succeed!');
 					assert(g.stepSucceeded('simple-sync'));
-					assert(g.resultsFrom('simple-sync') === 2018);
+					assert(g.resultsFrom('simple-sync') === '2018-4111111111111212');
 
 					assert(
 						JSON.stringify(g.resultsAll()) 
 						== 
-						'{"simple-sync":2018}', 
+						'{"simple-sync":"2018-4111111111111212"}', 
 						JSON.stringify(g.resultsAll())
 					);
 
@@ -49,11 +55,11 @@ describe("Simple Usage Tests", () => {
 		var gp;
 
 		it("Accepts multiple adds()", () => {
-			var result = g.add('mult-1', (ctx) => {
+			var result = g.add('mult-1', (last, ctx) => {
 				return Promise.resolve(2018);
 			})
-			.add('mult-2', (ctx) => {
-				return Promise.resolve(ctx['mult-1'] + 1);
+			.add('mult-2', (last, ctx) => {
+				return Promise.resolve(last + 1);
 			});
 
 			assert(result instanceof Grift);
@@ -129,12 +135,12 @@ describe("Simple Usage Tests", () => {
 		var gp;
 		
 		it("Accepts multiple adds()", () => {
-			var result = g.add('mult-1', (ctx) => {
+			var result = g.add('mult-1', (last, ctx) => {
 				return new Promise((resolve) => {
 					setTimeout(() => { resolve(2018); }, 100);
 				});
 			})
-			.add('mult-2', (ctx) => {
+			.add('mult-2', (last, ctx) => {
 				return new Promise((resolve) => {
 					setTimeout(() => { resolve(ctx['mult-1'] + 1); }, 100);
 				});
