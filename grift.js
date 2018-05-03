@@ -262,7 +262,8 @@ class Grift {
 	 * @return {Object.<string, any>}
 	 */
 	errorsAll() {
-		var errs = [];
+		var errs = {};
+
 		this.nays.forEach((v) => {
 			errs[ v[0] ] = v[1];
 		});
@@ -291,16 +292,16 @@ class Grift {
  * PRIVATE METHODS
  */
 function _nextStep() {
-	if (this.steps.length == 0) {
-		_complete.apply(this);
-		return;
-	}
-
 	if (this.abort_triggered || (this.nays.length > 0)) {
 		// stop everything!
 		_rollback.apply(this);
 		return;
 	}
+
+	if (this.steps.length == 0) {
+		_complete.apply(this);
+		return;
+	}	
 
 	var prm = this.steps.shift();
 	var tag = prm[0];
